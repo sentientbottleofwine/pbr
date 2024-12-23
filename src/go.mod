@@ -1,4 +1,4 @@
-module pass_backup_reminder
+module pbr
 
 go 1.23.4
 
