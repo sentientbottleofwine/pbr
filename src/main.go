@@ -169,9 +169,9 @@ func main() {
 			gracefulErrorOnExit(err)
 		}
 
-		if is_mountpoint {
+		if !is_mountpoint {
 			notify_until := notifications.NotifyUntilClosure()
-			err = notify_until("NOT A VALID MOUNTPOINT", args.storageDeviceMountpoint+", is not a valid mountpoint", func() bool {
+			err = notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in the backup drive", func() bool {
 				is_mountpoint, err := isMountpoint(args.storageDeviceMountpoint)
 				if err != nil {
 					gracefulErrorOnExit(err)
