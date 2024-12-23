@@ -55,23 +55,22 @@ func NotifyUntilClosure() func(title string, description string, condition func(
 		if condition() {
 			return nil
 		}
-		const disappearingAnimationDur = 16
-		const timeout = 50
+		const frequency = 30
 
 		if notificationId == -1 {
 			var err error
-			notificationId, err = NotifyAndGetId(title, description, timeout)
+			notificationId, err = NotifyAndGetId(title, description, 0)
 			if err != nil {
 				return err
 			}
 		}
 
 		for !condition() {
-			err := NotifyAndReplaceId(title, description, notificationId, timeout)
+			err := NotifyAndReplaceId(title, description, notificationId, 0)
 			if err != nil {
 				return err
 			}
-			time.Sleep(time.Duration(timeout-disappearingAnimationDur) * time.Millisecond)
+			time.Sleep(frequency * time.Second)
 		}
 
 		return nil
