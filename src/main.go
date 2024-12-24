@@ -49,7 +49,7 @@ func parseArgs() (arguments, error) {
 	const help = `pbr is a small program that backs up and reminds you of backing up your passwords you silly goose
 usage: pbr [database_path] [storage_device_mount_point] [git_remote]
 	
-	In the database path there has to be a git repo that has a remote added to  it`
+In the database path there has to be a git repo that has a remote added to  it`
 	if len(os.Args) < argCount {
 		return args, &argumentError{"Database path, storage device mountpoint or path to git repo is not defined.\n" + help}
 	} else if len(os.Args) > argCount {
