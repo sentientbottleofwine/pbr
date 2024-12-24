@@ -65,12 +65,19 @@ func NotifyUntilClosure() func(title string, description string, condition func(
 			}
 		}
 
-		for !condition() {
+		for true {
 			err := NotifyAndReplaceId(title, description, notificationId, 0)
 			if err != nil {
 				return err
 			}
-			time.Sleep(frequency * time.Second)
+
+			then := time.Now()
+			for time.Since(then) < 30*time.Second {
+				if condition() {
+					return nil
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
 
 		return nil
