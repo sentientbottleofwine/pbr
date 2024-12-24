@@ -2,15 +2,18 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 
 	"pbr/notifications"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/go-git/go-git/v5"
 	"github.com/shirou/gopsutil/disk"
 	"golang.org/x/sync/errgroup"
 )
@@ -18,6 +21,7 @@ import (
 type arguments struct {
 	databasePath            string
 	storageDeviceMountpoint string
+	gitRemote               string
 }
 
 type argumentError struct {
@@ -41,28 +45,36 @@ func checkPath(path string) (bool, error) {
 
 func parseArgs() (arguments, error) {
 	var args arguments
-	const arg_count = 3
+	const argCount = 4
 	const help = `pbr is a small program that backs up and reminds you of backing up your passwords you silly goose
-usage: pbr [database_path] [storage_device_mount_point]`
-	if len(os.Args) < arg_count {
-		return args, &argumentError{"Database path or storage device is not defined.\n" + help}
-	} else if len(os.Args) > arg_count {
+usage: pbr [database_path] [storage_device_mount_point] [git_remote]
+	
+	In the database path there has to be a git repo that has a remote added to  it`
+	if len(os.Args) < argCount {
+		return args, &argumentError{"Database path, storage device mountpoint or path to git repo is not defined.\n" + help}
+	} else if len(os.Args) > argCount {
 		return args, &argumentError{"Too many arguments.\n" + help}
 	}
 
-	for i := range os.Args {
-		exists, err := checkPath(os.Args[i])
-		if err != nil {
-			return args, err
-		}
+	// Check db
+	stat, err := os.Stat(os.Args[1])
+	if errors.Is(err, os.ErrNotExist) || stat.IsDir() {
+		return args, &argumentError{"Invalid path: " + os.Args[1]}
+	} else if err != nil {
+		return args, err
+	}
 
-		if !exists {
-			return args, &argumentError{"Path does not exist: " + os.Args[i]}
-		}
+	// Check mountpoint
+	_, err = os.Stat(os.Args[2])
+	if errors.Is(err, os.ErrNotExist) {
+		return args, &argumentError{"Invalid path: " + os.Args[2]}
+	} else if err != nil {
+		return args, err
 	}
 
 	args.databasePath = os.Args[1]
 	args.storageDeviceMountpoint = os.Args[2]
+	args.gitRemote = os.Args[3]
 
 	return args, nil
 }
@@ -124,7 +136,7 @@ func isMountpoint(mountpoint string) (bool, error) {
 	return slices.Contains(mountpoints, mountpoint), nil
 }
 
-func makeBackup(args arguments) error {
+func makeBackupPhys(args arguments) error {
 	db, err := os.Open(args.databasePath)
 	if err != nil {
 		return err
@@ -140,6 +152,44 @@ func makeBackup(args arguments) error {
 
 	_, err = io.Copy(backedup_db, db)
 	return err
+}
+
+func makeBackupGit(args arguments) error {
+	const commitMessage = "Update to db"
+	repoPath := filepath.Dir(args.databasePath)
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("Failed to open repo at: %s: %v", repoPath, err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	dbRelPath, err := filepath.Rel(repoPath, args.databasePath)
+	if err != nil {
+		return err
+	}
+
+	_, err = worktree.Add(dbRelPath)
+	if err != nil {
+		return fmt.Errorf("Failed to add: %s: %v", args.databasePath, err)
+	}
+
+	_, err = worktree.Commit(commitMessage, &git.CommitOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to commit: %v", err)
+	}
+
+	err = repo.Push(&git.PushOptions{
+		RemoteName: args.gitRemote,
+	})
+	if err != nil {
+		return fmt.Errorf("Failed to push: %v", err)
+	}
+
+	return nil
 }
 
 func gracefulErrorOnExit(err error) {
@@ -164,28 +214,33 @@ func main() {
 			gracefulErrorOnExit(err)
 		}
 
-		is_mountpoint, err := isMountpoint(args.storageDeviceMountpoint)
+		mountpointValid, err := isMountpoint(args.storageDeviceMountpoint)
 		if err != nil {
 			gracefulErrorOnExit(err)
 		}
 
-		if !is_mountpoint {
+		if !mountpointValid {
 			notify_until := notifications.NotifyUntilClosure()
-			err = notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in the backup drive", func() bool {
-				is_mountpoint, err := isMountpoint(args.storageDeviceMountpoint)
+			err = notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in and mount the backup drive", func() bool {
+				mountpointValid, err := isMountpoint(args.storageDeviceMountpoint)
 				if err != nil {
 					gracefulErrorOnExit(err)
 				}
 
-				if is_mountpoint {
+				if mountpointValid {
 					return true
 				}
 				return false
 			})
 		}
 
-		notifications.Notify("Backing up the db", "", 0)
-		err = makeBackup(args)
+		notifications.Notify("Backing up the db", "Copying to backup drive.\nPushing changes to remote.", 0)
+		err = makeBackupPhys(args)
+		if err != nil {
+			gracefulErrorOnExit(err)
+		}
+
+		err = makeBackupGit(args)
 		if err != nil {
 			gracefulErrorOnExit(err)
 		}
