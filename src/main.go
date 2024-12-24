@@ -58,17 +58,22 @@ In the database path there has to be a git repo that has a remote added to  it`
 	// Check db
 	stat, err := os.Stat(os.Args[1])
 	if errors.Is(err, os.ErrNotExist) || stat.IsDir() {
-		return args, &argumentError{"Invalid path: " + os.Args[1]}
+		return args, errors.New("Invalid path: " + os.Args[1])
 	} else if err != nil {
 		return args, err
 	}
 
 	// Check mountpoint
-	_, err = os.Stat(os.Args[2])
-	if errors.Is(err, os.ErrNotExist) {
-		return args, &argumentError{"Invalid path: " + os.Args[2]}
-	} else if err != nil {
-		return args, err
+	mountpointValid, err := isMountpoint(os.Args[2])
+	if err != nil {
+		gracefulErrorOnExit(err)
+	}
+
+	if !mountpointValid {
+		err = screamUntilValid(os.Args[2])
+		if err != nil {
+			return args, err
+		}
 	}
 
 	// Useful to later get a relative
@@ -123,7 +128,13 @@ func waitUntilWrite(databasePath string) error {
 }
 
 func comparePaths(lpath, rpath string) (bool, error) {
-	lpath, err := filepath.Abs(lpath)
+	lvalid, err := checkPath(lpath)
+	rvalid, err := checkPath(rpath)
+	if !lvalid || !rvalid {
+		return false, nil
+	}
+
+	lpath, err = filepath.Abs(lpath)
 	if err != nil {
 		return false, err
 	}
@@ -167,6 +178,22 @@ func isMountpoint(mountpoint string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func screamUntilValid(mountpoint string) error {
+	notify_until := notifications.NotifyUntilClosure()
+	nerr := notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in and mount the backup drive", func() bool {
+		mountpointValid, err := isMountpoint(mountpoint)
+		if err != nil {
+			gracefulErrorOnExit(err)
+		}
+		if mountpointValid {
+			notifications.Notify("Thank you", "Have a nice day", 0)
+			return true
+		}
+		return false
+	})
+	return nerr
 }
 
 func makeBackupPhys(args arguments) error {
@@ -228,7 +255,6 @@ func makeBackupGit(args arguments) error {
 func gracefulErrorOnExit(err error) {
 	if arg_err, ok := err.(*argumentError); ok {
 		log.Fatal(arg_err)
-		os.Exit(1)
 	}
 
 	notifications.Notify("pbr encounterred an error", err.Error(), 0)
@@ -253,29 +279,18 @@ func main() {
 		}
 
 		if !mountpointValid {
-			notify_until := notifications.NotifyUntilClosure()
-			err = notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in and mount the backup drive", func() bool {
-				mountpointValid, err := isMountpoint(args.storageDeviceMountpoint)
-				if err != nil {
-					gracefulErrorOnExit(err)
-				}
-
-				if mountpointValid {
-					return true
-				}
-				return false
-			})
+			screamUntilValid(args.storageDeviceMountpoint)
 		}
 
 		notifications.Notify("Backing up the db", "Copying to backup drive.\nPushing changes to remote.", 0)
-		err = makeBackupPhys(args)
-		if err != nil {
-			gracefulErrorOnExit(err)
-		}
+		perr := makeBackupPhys(args)
+		gerr := makeBackupGit(args)
 
-		err = makeBackupGit(args)
-		if err != nil {
-			gracefulErrorOnExit(err)
+		if perr != nil {
+			gracefulErrorOnExit(perr)
+		}
+		if gerr != nil {
+			gracefulErrorOnExit(gerr)
 		}
 	}
 }
