@@ -46,7 +46,7 @@ func checkPath(path string) (bool, error) {
 func parseArgs() (arguments, error) {
 	var args arguments
 	const argCount = 4
-	const help = `pbr is a small program that backs up and reminds you of backing up your passwords you silly goose
+	const help = `pbr is a small program that automates and reminds you of backing up your passwords you silly goose
 usage: pbr [database_path] [storage_device_mount_point] [git_remote]
 	
 In the database path there has to be a git repo that has a remote added to  it`
