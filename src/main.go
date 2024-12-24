@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 
 	"pbr/notifications"
 
@@ -72,11 +71,12 @@ In the database path there has to be a git repo that has a remote added to  it`
 		return args, err
 	}
 
-	args.databasePath = os.Args[1]
+	// Useful to later get a relative
+	args.databasePath, err = filepath.Abs(os.Args[1])
 	args.storageDeviceMountpoint = os.Args[2]
 	args.gitRemote = os.Args[3]
 
-	return args, nil
+	return args, err
 }
 
 func waitUntilWrite(databasePath string) error {
@@ -122,6 +122,28 @@ func waitUntilWrite(databasePath string) error {
 	return eg.Wait()
 }
 
+func comparePaths(lpath, rpath string) (bool, error) {
+	lpath, err := filepath.Abs(lpath)
+	if err != nil {
+		return false, err
+	}
+	rpath, err = filepath.Abs(rpath)
+	if err != nil {
+		return false, err
+	}
+
+	lpath, err = filepath.EvalSymlinks(lpath)
+	if err != nil {
+		return false, err
+	}
+	rpath, err = filepath.EvalSymlinks(rpath)
+	if err != nil {
+		return false, err
+	}
+
+	return lpath == rpath, nil
+}
+
 func isMountpoint(mountpoint string) (bool, error) {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
@@ -133,7 +155,18 @@ func isMountpoint(mountpoint string) (bool, error) {
 		mountpoints = append(mountpoints, partition.Mountpoint)
 	}
 
-	return slices.Contains(mountpoints, mountpoint), nil
+	for _, mount := range mountpoints {
+		equalPaths, err := comparePaths(mount, mountpoint)
+		if err != nil {
+			return false, err
+		}
+
+		if equalPaths {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func makeBackupPhys(args arguments) error {
