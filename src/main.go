@@ -129,7 +129,13 @@ func waitUntilWrite(databasePath string) error {
 
 func comparePaths(lpath, rpath string) (bool, error) {
 	lvalid, err := checkPath(lpath)
+	if err != nil {
+		return false, err
+	}
 	rvalid, err := checkPath(rpath)
+	if err != nil {
+		return false, err
+	}
 	if !lvalid || !rvalid {
 		return false, nil
 	}
@@ -181,8 +187,8 @@ func isMountpoint(mountpoint string) (bool, error) {
 }
 
 func screamUntilValid(mountpoint string) error {
-	notify_until := notifications.NotifyUntilClosure()
-	nerr := notify_until("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in and mount the backup drive", func() bool {
+	notifyUntil := notifications.NotifyUntilClosure()
+	nerr := notifyUntil("NOT A VALID MOUNTPOINT", "Please either change the mountpoint or plug in and mount the backup drive", func() bool {
 		mountpointValid, err := isMountpoint(mountpoint)
 		if err != nil {
 			gracefulErrorOnExit(err)
@@ -203,14 +209,14 @@ func makeBackupPhys(args arguments) error {
 	}
 	defer db.Close()
 
-	var backedup_db *os.File
-	backedup_db, err = os.Create(args.storageDeviceMountpoint + "/" + path.Base(args.databasePath))
+	var backedupDb *os.File
+	backedupDb, err = os.Create(args.storageDeviceMountpoint + "/" + path.Base(args.databasePath))
 	if err != nil {
 		return err
 	}
-	defer backedup_db.Close()
+	defer backedupDb.Close()
 
-	_, err = io.Copy(backedup_db, db)
+	_, err = io.Copy(backedupDb, db)
 	return err
 }
 
@@ -253,8 +259,8 @@ func makeBackupGit(args arguments) error {
 }
 
 func gracefulErrorOnExit(err error) {
-	if arg_err, ok := err.(*argumentError); ok {
-		log.Fatal(arg_err)
+	if argEerr, ok := err.(*argumentError); ok {
+		log.Fatal(argEerr)
 	}
 
 	notifications.Notify("pbr encounterred an error", err.Error(), 0)
