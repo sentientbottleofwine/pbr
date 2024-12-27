@@ -24,3 +24,4 @@ In the database path there has to be a git repo that has a remote added to it. G
 ```
 > [!TIP]
 > If you're using ssh as auth remember to [configure](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#adding-your-ssh-key-to-the-ssh-agent) your ssh agent correctly
+If you don't want to run `eval "$(ssh-agent)`, and `ssh-add <your git ssh key>`. You can try adding to your `.zshrc` or `.bashrc`. You can also try funtoo's [keychain](https://www.funtoo.org/Funtoo:Keychain).
